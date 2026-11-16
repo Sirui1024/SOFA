@@ -1,0 +1,30 @@
+{
+  "workload": "synthetic",
+  "intervals": 96,
+  "function_count": 845,
+  "arrival_shape": [
+    845,
+    16
+  ],
+  "feature_row_width": 5,
+  "files": [
+    {
+      "file": "synthetic_workload_arrival_pattern_arr.pkl.gz",
+      "compression": "gzip",
+      "compressed_bytes": 185698,
+      "sha256": "71146834124e5e308e730aa9373f7b7aebc696970698d5323b01c5249c3a4583",
+      "original_file": "synthetic_workload_arrival_pattern_arr.pkl",
+      "original_bytes": 10383525,
+      "original_sha256": "93a82145273820c9b2145875821b82ddd52001890ce8922b031cf2b5b550a9be"
+    },
+    {
+      "file": "synthetic_workload_feature_lut_list.pkl.gz",
+      "compression": "gzip",
+      "compressed_bytes": 8296215,
+      "sha256": "6e073145736f91d2dfd154ec530fa651274b48340294c52dfba6a75ff52ccc3b",
+      "original_file": "synthetic_workload_feature_lut_list.pkl",
+      "original_bytes": 101832916,
+      "original_sha256": "ac62f95a287f316e395c595d05738ab300123313c47f1d1159d3bf749a0361d0"
+    }
+  ]
+}
