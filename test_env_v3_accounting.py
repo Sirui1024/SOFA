@@ -120,11 +120,15 @@ class AccountingTests(unittest.TestCase):
             np.testing.assert_allclose(env.calculate_cost([2] * 4, 0),
                                        [0.48, 0.29, 0.1545, 0.385])
             np.testing.assert_allclose(env.calculate_carbon([2] * 4, 0),
-                                       [0.229, 0.548, 0.477, 0.120])
+                                       np.array([0.229, 0.548, 0.477, 0.120])
+                                       * (1 + 2 / 0.66 * (1.25 * 5.5e-4 + 0.25 * 6.4e-4)))
             np.testing.assert_allclose(env.calculate_water([2] * 4, 0),
                                        np.array([0.19, 1.93, 1.89, 3.22]) + 2 / 0.66 * 1.25)
-            for calculate in (env.calculate_cost, env.calculate_carbon):
-                np.testing.assert_array_equal(calculate([0.5] * 4, 0), np.zeros(4))
+            np.testing.assert_array_equal(env.calculate_cost([0.5] * 4, 0), np.zeros(4))
+            # Solar covers facility demand, but water services still use the grid.
+            np.testing.assert_allclose(env.calculate_carbon([0.5] * 4, 0),
+                                       np.array(env.carbon_list) * 0.5 / 0.66
+                                       * (1.25 * 5.5e-4 + 0.25 * 6.4e-4))
             for calculate in (env.calculate_cost, env.calculate_carbon, env.calculate_water):
                 np.testing.assert_allclose(calculate([2] * 4, 96), calculate([2] * 4, 0))
             np.testing.assert_allclose(env.calculate_water([0.5] * 4, 0),
@@ -136,7 +140,8 @@ class AccountingTests(unittest.TestCase):
             np.testing.assert_allclose(env.calculate_cost([2] * 4, 0),
                                        np.array([0.48, 0.29, 0.1545, 0.385]) * 2)
             np.testing.assert_allclose(env.calculate_carbon([2] * 4, 0),
-                                       np.array(env.carbon_list) * 2)
+                                       np.array(env.carbon_list)
+                                       * (2 + 2 / 0.66 * (1.25 * 5.5e-4 + 0.25 * 6.4e-4)))
             np.testing.assert_allclose(env.calculate_water([2] * 4, 0),
                                        np.array(env.water_list) * 2 + 2 / 0.66 * 1.25)
 
@@ -145,6 +150,38 @@ class AccountingTests(unittest.TestCase):
         with patch.object(env, 'water_list', [0.0] * 4):
             np.testing.assert_allclose(env.calculate_water([0.66] * 4, 95), [1.25] * 4)
             np.testing.assert_array_equal(env.calculate_water([0.0] * 4, 95), np.zeros(4))
+
+    def test_water_carbon_uses_potable_supply_and_blowdown_treatment(self):
+        # 0.66 kWh -> 1 L evaporation, 0.25 L blowdown; 0.0008475 kWh services.
+        with patch.object(env, 'SOLAR_ENABLED', False):
+            np.testing.assert_allclose(env.calculate_carbon([0.66] * 4, 0),
+                                       (0.66 + 0.0008475) * np.array(env.carbon_list))
+            np.testing.assert_array_equal(env.calculate_carbon([0.] * 4, 0), np.zeros(4))
+            baseline = env.calculate_carbon([0.66] * 4, 0)
+            # Source water already belongs to electricity generation, not onsite supply.
+            with patch.object(env, 'water_list', [1000.] * 4):
+                np.testing.assert_array_equal(env.calculate_carbon([0.66] * 4, 0), baseline)
+
+    def test_water_carbon_respects_regional_intensities_and_cooling_parameters(self):
+        with patch.object(env, 'SOLAR_ENABLED', False), \
+                patch.object(env, 'water_latent_heat', 0.5), \
+                patch.object(env, 'cycle_of_concentration', 3), \
+                patch.object(env, 'POTABLE_WATER_ENERGY_INTENSITY_KWH_PER_L',
+                             [0.001, 0.002, 0., 0.]), \
+                patch.object(env, 'WASTEWATER_ENERGY_INTENSITY_KWH_PER_L',
+                             [0., 0., 0.003, 0.004]):
+            # 1 kWh -> 2 L evaporation + 1 L blowdown; supply is 3 L.
+            np.testing.assert_allclose(env.calculate_carbon([1.] * 4, 0),
+                                       np.array([1.003, 1.006, 1.003, 1.004])
+                                       * np.array(env.carbon_list))
+
+    def test_simulation_carbon_objective_includes_water_services(self):
+        with patch.object(env, 'SOLAR_ENABLED', False), \
+                patch.object(env, 'calculate_energy', return_value=[0.66] * 4):
+            objectives, _ = env.simulation(
+                [], np.zeros((1, 901)), np.zeros((3, 4, 900)),
+                np.ones(4) / 4, np.empty((0, 5)), 0, 20, 100)
+        self.assertAlmostEqual(objectives[2], (0.66 + 0.0008475) * sum(env.carbon_list))
 
 
 if __name__ == '__main__':

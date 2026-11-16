@@ -207,7 +207,18 @@ used to construct every bundled value.
 | Regional carbon-data navigation | [EIA State Electricity Profiles](https://www.eia.gov/electricity/state/) | State-level generation/emissions data; not a record of the exact simulator constants. |
 | Electricity-generation water intensity | [Consumptive Water Use for U.S. Power Production](https://docs.nlr.gov/docs/fy04osti/33905.pdf), Torcellini, Long, and Judkoff, NREL/TP-550-33905 | Energy-water intensity factor (EWIF) source. |
 | On-site and source water accounting | [The Green Grid: Water Usage Effectiveness (WUE), White Paper 35](https://www.thegreengrid.org/system/files/store/WUE_v1.pdf) | Water-accounting and cooling-water background. |
-| Potable-water and wastewater energy intensity | [Malinowski et al., Energy-Water Nexus](https://doi.org/10.1061/%28ASCE%29WR.1943-5452.0000528) | Literature source for water-production/treatment energy intensities. The current release's carbon objective includes grid electricity only. |
+| Potable-water and wastewater energy intensity | [Malinowski et al., Energy-Water Nexus](https://doi.org/10.1061/%28ASCE%29WR.1943-5452.0000528) | Literature source for water-production/treatment energy intensities. The carbon objective includes grid electricity and cooling-water production/treatment. |
+
+The carbon objective in [ENV_V3.py](ENV_V3.py) follows the revision manuscript's
+`eq:water_related_carbon` and `eq:carbon`:
+`carbon_kg = (grid_kWh + (evaporation_L + blowdown_L) * EI_P + blowdown_L * EI_W) * CF`.
+Table 1 specifies `EI_P = 5.5e-4` and `EI_W = 6.4e-4` kWh/kg; the model assumes
+1 kg/L and stores these as configurable per-region kWh/L lists, with uniform
+defaults. `CF` is the local grid carbon factor in kg/kWh. Water services use
+grid electricity even when on-site solar covers datacenter demand. Only onsite
+cooling water enters the service term; electricity-generation water remains in
+the water objective. Electricity cost continues to cover datacenter grid demand.
+Carbon results from earlier grid-only runs must be recomputed for comparison.
 
 NSRDB provides DHI as one of its irradiance variables; DHI is not a separate
 database. For access methods and any required credentials, consult the source

@@ -1,7 +1,7 @@
 """Four-region workload simulation and environmental objective accounting.
 
-Objectives are minimized: utility loss (%), electricity cost (USD), grid
-electricity carbon (kg), and water consumption (L). Scenario constants below
+Objectives are minimized: utility loss (%), electricity cost (USD), operational
+carbon from electricity and water use (kg), and water consumption (L). Constants below
 are model inputs, not measurements inferred from the host machine.
 """
 
@@ -67,6 +67,12 @@ water_list = [0.19, 1.93, 1.89, 3.22] # L/kWh, in region order: Los Angeles, Den
 # Evaporative cooling model: latent heat and concentration-cycle assumptions.
 water_latent_heat = 0.66  # kWh/L
 cycle_of_concentration = 5  # Blowdown = evaporation / (cycles - 1).
+
+# Manuscript Table 1: 5.5e-4 and 6.4e-4 kWh/kg, respectively.
+# Assume water density of 1 kg/L to match the water accounting in liters.
+# Region order: Los Angeles, Denver, Detroit, New York; defaults are uniform.
+POTABLE_WATER_ENERGY_INTENSITY_KWH_PER_L = [5.5e-4] * numbe_of_region
+WASTEWATER_ENERGY_INTENSITY_KWH_PER_L = [6.4e-4] * numbe_of_region
 
 network_penalty_arr = np.array([[0.00,0.05,0.25,0.75],
                                 [0.05,0.00,0.05,0.25],
@@ -529,6 +535,13 @@ def update_slo(slo_violation_arr, original_req_distribution_arr, new_req_distrib
 
     return new_slo_violation_arr
 
+def _calculate_onsite_water(total_energy):
+    """Return evaporation and blowdown in liters for facility energy in kWh."""
+    evaporation_water = total_energy / water_latent_heat
+    blowdown_water = evaporation_water / (cycle_of_concentration - 1)
+    return evaporation_water, blowdown_water
+
+
 def calculate_water(energy_per_region, epoch):
     """Total liters: grid-generation water plus onsite evaporation and blowdown.
 
@@ -543,8 +556,7 @@ def calculate_water(energy_per_region, epoch):
         total_energy = energy_per_region[region_id]
         grid_energy = max(total_energy - solar_list[region_id][hour]*solar_factor, 0)
         source_water = grid_energy * water_list[region_id]
-        evaporation_water = total_energy / water_latent_heat
-        blowdown_water = evaporation_water / (cycle_of_concentration - 1)
+        evaporation_water, blowdown_water = _calculate_onsite_water(total_energy)
         water_per_region.append(source_water + evaporation_water + blowdown_water)
 
     return water_per_region
@@ -578,12 +590,27 @@ def finite_population(values, designs):
 
 
 def calculate_carbon(energy_per_region, epoch):
-    carbon_per_region=[]
+    """Operational kg CO2: grid electricity plus cooling-water services.
+
+    Manuscript eq:water_related_carbon supplies evaporation + blowdown as
+    potable water and treats only blowdown as wastewater. Both services use
+    the local grid carbon factor, independent of datacenter solar generation.
+    Electricity-generation source water is excluded from this service term.
+    """
+    carbon_per_region = []
     hour = epoch//4
     hour = hour%24
     solar_factor = SOLAR_ENERGY_FACTOR if SOLAR_ENABLED else 0
     for region_id in range(numbe_of_region):
-        carbon_per_region.append(max(energy_per_region[region_id]-solar_list[region_id][hour]*solar_factor,0)*carbon_list[region_id])
+        total_energy = energy_per_region[region_id]
+        grid_energy = max(total_energy - solar_list[region_id][hour]*solar_factor, 0)
+        evaporation_water, blowdown_water = _calculate_onsite_water(total_energy)
+        water_service_energy = (
+            (evaporation_water + blowdown_water)
+            * POTABLE_WATER_ENERGY_INTENSITY_KWH_PER_L[region_id]
+            + blowdown_water * WASTEWATER_ENERGY_INTENSITY_KWH_PER_L[region_id]
+        )
+        carbon_per_region.append((grid_energy + water_service_energy) * carbon_list[region_id])
 
     return carbon_per_region
 
